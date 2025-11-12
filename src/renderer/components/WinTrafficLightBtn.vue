@@ -71,31 +71,32 @@ onMounted(() => {
 
 <template>
   <div class="win-traffic-light-btn">
-    <button @click="quit" class="ctl-btn close-btn" title="关闭">
+    <button @click="quit" class="close-btn" title="关闭">
       <i class="iconfont icon-guanbi1"></i>
     </button>
 
-    <button @click="doMinimize" class="ctl-btn min-btn" title="最小化">
+    <button @click="doMinimize" class="min-btn" title="最小化">
       <i class="iconfont icon-zuixiaohua"></i>
     </button>
 
-    <button @click="maximize" class="ctl-btn max-btn" title="最大化">
+    <button @click="maximize" class="max-btn" title="最大化">
       <i class="iconfont icon-zuidahua"></i>
     </button>
   </div>
 </template>
 
-<style scoped>
+<style>
 .win-traffic-light-btn {
   display: flex;
   -webkit-app-region: none;
   margin: 5px;
 }
 
-.win-traffic-light-btn .ctl-btn {
+.win-traffic-light-btn button {
   /* width: 16px; */
-  width: 15px;
-  height: 15px;
+  border: 0px;
+  width: 13px;
+  height: 13px;
   border-radius: 100rem;
   margin-right: 8px;
   -webkit-app-region: none;
@@ -105,13 +106,13 @@ onMounted(() => {
   justify-content: center;
 }
 
-.win-traffic-light-btn .ctl-btn i {
+.win-traffic-light-btn button i {
   font-size: 8px;
   font-weight: bold;
   visibility: hidden;
   color: #555;
 }
-.win-traffic-light-btn:hover .ctl-btn i {
+.win-traffic-light-btn:hover button i {
   cursor: pointer;
   visibility: visible;
 }

@@ -4,7 +4,7 @@
   <div>simple-layout</div>
 </template>
 
-<style>
+<style scoped>
 .simple-layout {
   display: flex;
   flex-direction: column;
@@ -407,9 +407,9 @@
 }
 
 .simple-layout .win-traffic-light-btn .ctl-btn {
-  width: 13px !important;
-  height: 13px !important;
-  margin-right: 8px !important;
+  width: 13px;
+  height: 13px;
+  margin-right: 8px;
 }
 
 .simple-layout .win-ctl-wrap .collapse-btn svg {
