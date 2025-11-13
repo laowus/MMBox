@@ -145,10 +145,10 @@ export class NetEase {
                 const result = { platform: NetEase.CODE, cate, offset, limit, page, total: 0, data: [] }
                 const listEl = doc.querySelectorAll("#m-pl-container li")
                 listEl.forEach(el => {
-                    let id = null, cover = null, title = null, itemUrl = null, listenNum = 0
+                    let id = null, cover = null, title = null, itemUrl = null
+
                     const coverEl = el.querySelector(".u-cover img")
                     const titleEl = el.querySelector(".dec a")
-                    const listenNumEl = el.querySelector(".bottom .nb")
 
                     if(coverEl) {
                         cover = coverEl.getAttribute("src").replace("140y140", "500y500")
@@ -160,21 +160,11 @@ export class NetEase {
                         id = itemUrl.split('=')[1]
                     }
 
-                    if(listenNumEl) {
-                        listenNum = parseInt(listenNumEl.textContent || 0)
-                    }
-
                     if(id && itemUrl) {
-                        const playlist = new Playlist(id, NetEase.CODE , cover, title, itemUrl)
-                        playlist.listenNum = listenNum
-                        result.data.push(playlist)
+                        const detail = new Playlist(id, NetEase.CODE , cover, title, itemUrl)
+                        result.data.push(detail)
                     }
-                })
-                const pgEls = doc.querySelectorAll("#m-pl-pager .u-page .zpgi")
-                if(pgEls && pgEls.length > 0) {
-                    const totalEl = pgEls[pgEls.length - 1]
-                    if(totalEl) result.total = parseInt(totalEl.textContent)
-                }
+                });
                 resolve(result)
             })
         })
@@ -253,7 +243,6 @@ export class NetEase {
                         const album = { id: song.al.id, name: song.al.name }
                         const track = new Track(song.id, NetEase.CODE, song.name, artist, album, song.dt, song.al.picUrl)
                         track.mv = song.mv
-                        track.pid = id
                         result.addTrack(track)
                     })
                     resolve(result)
@@ -326,7 +315,7 @@ export class NetEase {
                     data.push(track)
                 })
 
-                const result = { id, platform: NetEase.CODE, title, cover, hotSongs: data }
+                const result = { id, platform: NetEase.CODE, title, cover, data }
                 resolve(result)
             })
         })
@@ -334,13 +323,7 @@ export class NetEase {
 
     //歌手详情：热门歌曲
     static artistDetailHotSongs(id) {
-        return new Promise(async (resolve, reject) => {
-            const result = await NetEase.artistDetail(id)
-            const data = result.hotSongs
-            result.data = data
-            Reflect.deleteProperty(result, 'hotSongs')
-            resolve(result)
-        })
+        return NetEase.artistDetail(id)
     }
 
     //歌手详情: 专辑
@@ -449,7 +432,7 @@ export class NetEase {
                     track.mv = item.mv
                     return track
                 })
-                const result = { platform: NetEase.CODE, offset, limit, page, data }
+                const result = { offset, limit, page, data }
                 resolve(result)
             })
         }) 
@@ -467,7 +450,7 @@ export class NetEase {
                     const playlist = new Playlist(item.id, NetEase.CODE, item.coverImgUrl, item.name)
                     return playlist
                 })
-                const result = { platform: NetEase.CODE, offset, limit, page, data }
+                const result = { offset, limit, page, data }
                 resolve(result)
             })
         }) 
@@ -486,7 +469,7 @@ export class NetEase {
                     album.publishTime = toYmd(item.publishTime)
                     return album
                 })
-                const result = { platform: NetEase.CODE, offset, limit, page, data }
+                const result = { offset, limit, page, data }
                 resolve(result)
             })
         }) 
@@ -500,7 +483,7 @@ export class NetEase {
             const reqBody = weapi(param)
             postJson(url, reqBody).then(json => {
                 const list = json.result.artists
-                const result = { platform: NetEase.CODE, offset, limit, page, data: [] }
+                const result = { offset, limit, page, data: [] }
                 if(list) {
                     result.data = list.map(item => ({
                         id: item.id,
@@ -692,14 +675,6 @@ export class NetEase {
         })
     }
 
-    static radioCategories() {
-        return NetEase.anchorRadioCategories()
-    }
-
-    static radioSquare(cate, offset, limit, page, order) {
-        return NetEase.anchorRadioSquare(cate, offset, limit, page, order)
-    }
-
     static anchorRadioCategories() {
         return new Promise((resolve, reject) => {
             const url = "https://music.163.com/discover/djradio"
@@ -763,12 +738,6 @@ export class NetEase {
                         }
                     })
                 }
-                const pgEls = doc.querySelectorAll("#allradios .u-page .zpgi")
-                if(pgEls && pgEls.length > 0) {
-                    const totalEl = pgEls[pgEls.length - 1]
-                    if(totalEl) result.total = parseInt(totalEl.textContent)
-                }
-
                 //电台排行榜
                 listEl = doc.querySelectorAll("#allradios .rdilist li")
                 listEl.forEach(el => {
@@ -834,7 +803,7 @@ export class NetEase {
                     track.pid = id
                     track.songlistId = songlistId
                     track.extra2 = updateTime
-                    track.lyric.addLine('999:99.000', about)
+                    track.lyric.addLine('00:00.000', about)
 
                     result.addTrack(track)
                 })
@@ -882,5 +851,4 @@ export class NetEase {
             })
         })
     }
-    
 }

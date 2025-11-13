@@ -14,15 +14,11 @@ const COOKIES =  {
     kg_dfid_collect: "d41d8cd98f00b204e9800998ecf8427"
 }
 
-const signParam = (param) => {
+const searchParam = (param) => {
     const md5Key = 'NVPh5oo715z5DIWAeQlhMDsWXXQV4hwt'
     param = param.split('&').sort().join('')
     return md5Key + param + md5Key
 }
-
-const getSignature = (param) => {
-    return CryptoJS.MD5(signParam(param)).toString().toUpperCase()
- }
 
 const getDataUrl = (hash, albumId) => {
     return "https://wwwapi.kugou.com/yy/index.php?r=play/getdata" 
@@ -52,7 +48,6 @@ const getCustomCover = (origin) => {
 }
 
 const jsonify = (text) => {
-    //text = text ? text.trim() : ''
     text = text.replace(/\/\/ \S*/g, '') //注释
         .replace(/\s/g, '') //空白符
         .replace(/'/g, '"')
@@ -71,7 +66,7 @@ export class KuGou {
     static TOPLIST_CODE = "0-0-0"
     static RADIO_CODE = "f-m-0"
     static TOPLIST_PREFIX = "TOP_"
-    static RADIO_CACHE = { channel: 0, data: [], page: 1 }
+    static RADIO_CACHE = { channel: 0, data: [], index: 0, page: 1 }
 
     //全部歌单分类
     static categories() {
@@ -185,7 +180,6 @@ export class KuGou {
                         const track = new Track(item.audio_id, KuGou.CODE, item.FileName, artist, album, duration)
                         track.hash = item.Hash
                         track.artistNotCompleted = true
-                        track.pid = id
                         result.addTrack(track)
                     })
                 }
@@ -195,7 +189,7 @@ export class KuGou {
     }
 
     //电台列表
-    static playlistRadios(cate, offset, limit, page, order) {
+    static radioList(cate, offset, limit, page, order) {
         const result = { platform: KuGou.CODE, cate, offset, limit, page, total: 0, data: [] }
         return new Promise((resolve, reject) => {
             if(page > 1) {
@@ -221,28 +215,32 @@ export class KuGou {
     }
 
     //电台：下一首歌曲
-    static nextPlaylistRadioTrack(channel, track) {
+    static nextRadioTrack(channel, track) {
         return new Promise((resolve, reject) => {
+            //TODO
             let result = null
-            const index = !track ? 0 :
-                KuGou.RADIO_CACHE.data.findIndex(item => item.id == track.id)
+            let index = KuGou.RADIO_CACHE.index
+            let page = KuGou.RADIO_CACHE.page
             const length = KuGou.RADIO_CACHE.data.length
             //是否命中缓存
             if(channel == KuGou.RADIO_CACHE.channel) {
-                if(length > 0 && index > -1 && index < (length - 1)) {
-                    result = KuGou.RADIO_CACHE.data[index + 1]
+                if(index < (length - 1)) {
+                    result = KuGou.RADIO_CACHE.data[++index]
+                    KuGou.RADIO_CACHE.index = index
                     resolve(result)
                     return
+                } else {
+                    KuGou.RADIO_CACHE.page = ++page
                 }
-                KuGou.RADIO_CACHE.page += 1
             } else { //不命中，重置缓存分页参数
                 KuGou.RADIO_CACHE.page = 1
             }
             //不命中，重置缓存
             KuGou.RADIO_CACHE.channel = channel
             KuGou.RADIO_CACHE.data.length = 0
+            KuGou.RADIO_CACHE.index = 0
             
-            const page = KuGou.RADIO_CACHE.page
+            page = KuGou.RADIO_CACHE.page
             const limit = 20
             const offset = (page - 1) * limit
 
@@ -276,13 +274,13 @@ export class KuGou {
 
     //歌单(列表)广场
     static square(cate, offset, limit, page, order) {
-        const originCate = cate
-        let resolvedCate = (cate || "").toString().trim()
+        const originCate = cate ? (cate + "") : "";
+        let resolvedCate = originCate.trim()
         order = order || 5
         //榜单
         if(resolvedCate === KuGou.TOPLIST_CODE) return KuGou.toplist(cate, offset, limit, page, order)
         //电台
-        if(resolvedCate === KuGou.RADIO_CODE) return KuGou.playlistRadios(cate, offset, limit, page, order)
+        if(resolvedCate === KuGou.RADIO_CODE) return KuGou.radioList(cate, offset, limit, page, order)
         //普通歌单
         return new Promise((resolve, reject) => {
             const result = { platform: KuGou.CODE, cate: originCate, order, offset, limit, page, total: 0, data: [] }
@@ -300,10 +298,10 @@ export class KuGou {
                     }
                 }
                 if(scriptText) {
-                    const globalData = Function(scriptText + ' return global')()
-                    result.total = Math.ceil(parseInt(globalData.total) / limit) 
-
-                    const list = globalData.special
+                    scriptText = scriptText.split(key)[1].trim()
+                    scriptText = scriptText.substring(0, scriptText.length - 1)
+                    const json = JSON.parse(scriptText)
+                    const list = json
                     list.forEach(item => {
                         const id = item.specialid
                         const cover = getCustomCover(item.img)
@@ -344,8 +342,12 @@ export class KuGou {
                     }
                 }
                 if(scriptText) {
-                    const json = Function(scriptText + ' return data')()
-
+                    scriptText = scriptText.split(key)[1]
+                    key = 'specialData ='
+                    scriptText = scriptText.split(key)[0].trim()
+                    scriptText = scriptText.substring(0, scriptText.length - 1)
+                    const json = JSON.parse(scriptText)
+                    
                     json.forEach(item => {
                         const artist = []
                         const album = { id: item.album_id, name: item.album_name }
@@ -361,8 +363,6 @@ export class KuGou {
                         }
                         const track = new Track(item.audio_id, KuGou.CODE, item.songname, artist, album, duration, trackCover)
                         track.hash = item.hash
-                        track.pid = id
-                        track.payPlay = (item.vip != 0)
                         result.addTrack(track)
                     })
                 }
@@ -498,13 +498,14 @@ export class KuGou {
                 + "?r=singer/album&sid=" + id 
                 + "&p=" + page + "&t=" + Date.now()
             postJson(url).then(json => {
+                
                 const total = json.total
                 const data = []
                 const list = json.data
                 list.forEach(item => {
                     const artist = [ { id, name: item.singername } ]
-                    const album = new Album(item.albumid, KuGou.CODE, item.albumname, item.img, artist)
-                    data.push(album)
+                    const track = new Album(item.albumid, KuGou.CODE, item.albumname, item.img, artist)
+                    data.push(track)
                 })
                 const result = { offset, limit, page, total, data }
                 resolve(result)
@@ -580,24 +581,23 @@ export class KuGou {
                         + "&bitrate=0&isfuzzy=0&inputtype=0&platform=WebFilter&userid=0&clientver=2000"
                         + "&iscorrection=1&privilege_filter=0&token=&srcappid=2919" 
                         + "&clienttime=" + now + "&mid=" + now + "&uuid=" + now + "&dfid=-"
-            const signature = getSignature(param)
+            const md5Param = searchParam(param)
+            const signature = CryptoJS.MD5(md5Param).toString().toUpperCase()
             const url = "https://complexsearch.kugou.com/v2/search/song" + "?" + param + "&signature=" + signature
             
             getJson(url).then(jsonp => {
                 let jsonText = jsonp.split(callbackFn + "(")[1].trim()
                 jsonText = jsonText.substring(0, jsonText.length - 1)
                 const json = JSON.parse(jsonText)
-
                 const data = json.data.lists.map(item => {
                     const artist = item.Singers
                     const album = { id: item.AlbumID, name: item.AlbumName }
                     const duration = item.Duration * 1000
                     const track = new Track(item.ID, KuGou.CODE, item.SongName, artist, album, duration, item.pic)
                     track.hash = item.FileHash
-                    track.mv = item.MvHash
                     return track
                 })
-                const result = { platform: KuGou.CODE, offset, limit, page, data }
+                const result = { offset, limit, page, data }
                 resolve(result)
             })
         })
@@ -612,7 +612,8 @@ export class KuGou {
                         + "&platform=WebFilter&userid=0&clientver=2000"
                         + "&iscorrection=1&privilege_filter=0&token=&srcappid=2919" 
                         + "&clienttime=" + now + "&mid=" + now + "&uuid=" + now + "&dfid=-"
-            const signature = getSignature(param)
+            const md5Param = searchParam(param)
+            const signature = CryptoJS.MD5(md5Param).toString().toUpperCase()
             const url = "https://complexsearch.kugou.com/v1/search/special" + "?" + param + "&signature=" + signature
             
             getJson(url).then(jsonp => {
@@ -620,11 +621,12 @@ export class KuGou {
                 jsonText = jsonText.substring(0, jsonText.length - 1)
                 const json = JSON.parse(jsonText)
                 
+
                 const data = json.data.lists.map(item => {
                     const track = new Playlist(item.specialid, KuGou.CODE, getCustomCover(item.img), item.specialname, item.intro)
                     return track
                 })
-                const result = { platform: KuGou.CODE, offset, limit, page, data }
+                const result = { offset, limit, page, data }
                 resolve(result)
             })
         })
@@ -633,29 +635,15 @@ export class KuGou {
     //搜索: 专辑
     static searchAlbums(keyword, offset, limit, page) {
         return new Promise((resolve, reject) => {
-            const now = Date.now()
-            let param = `appid=1155&clienttime=${now}&clientver=304&dfid=-&keyword=${keyword}`
-                + `&mid=e463b0b4d6b10509c05f270142d87a7d&page=${page}&pagesize=20`
-                + `&platform=WebFilter&requestid=5&srcappid=2919&tag=em&token=&userid=0&uuid=e35cb5213b6619ec5c61e5cecb61bcf4`
-            const signature = getSignature(param)
-            const url = "https://complexsearch.kugou.com/v1/search/album" + "?" + param + "&signature=" + signature
-            getJson(url).then(json => {
-                const data = json.data.lists.map(item => {
-                    const album = new Album(item.albumid, KuGou.CODE, item.albumname, item.img)
-                    album.publishTime = item.publish_time
-                    album.about = item.intro
-                    return album
-                })
-                const result = { platform: KuGou.CODE, offset, limit, page, data }
-                resolve(result)
-            })
+            const result = { offset, limit, page, data: [] }
+            resolve(result)
         })
     }
 
     //搜索: 歌手
     static searchArtists(keyword, offset, limit, page) {
         return new Promise((resolve, reject) => {
-            const result = { platform: KuGou.CODE, offset, limit, page, data: [] }
+            const result = { offset, limit, page, data: [] }
             resolve(result)
         })
     }
@@ -706,8 +694,8 @@ export class KuGou {
             source[0] = page
             source[1] = cate['字母'].item.value
             return source.join('-')
-        } catch(error) {
-            //console.log(error)
+        } catch(e) {
+            //console.log(e)
         }
         return '1-all-1'
     }
@@ -751,17 +739,4 @@ export class KuGou {
         })
     }
 
-    static videoDetail(id, quality) {
-        return new Promise((resolve, reject) => {
-            const now = Date.now()
-            let param = `srcappid=2919&clientver=20000&clienttime=${now}&mid=${now}&uuid=${now}&dfid=-&cmd=123&ext=mp4&hash=${id}&ismp3=0&key=kugoumvcloud&pid=6&ssl=1&appid=1014`
-            const signature = getSignature(param)
-            const url = `https://gateway.kugou.com/v2/interface/index?${param}&signature=${signature}`
-            getJson(url).then(json => {
-                const result = { id, platform: KuGou.CODE, quality, url: '' }
-                result.url = json.data[id.toLowerCase()].downurl
-                resolve(result)
-            })
-        })
-    }
 }

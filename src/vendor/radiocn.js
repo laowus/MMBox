@@ -20,27 +20,44 @@ export class RadioCN {
 
     //全部分类
     static categories() {
-        return new Promise( async (resolve, reject) => {
-            const result = { platform: RadioCN.CODE, data: [], orders: [] }  
+        return new Promise((resolve, reject) => {
+            const url = "http://tacc.radio.cn/pcpages/categorypages"
+            const ts = Date.now()
+            const callback = 'jQuery1910629327131166708_' + ts
+            const reqBody = {
+                callback,
+                per_page: 16,
+                page: 1,
+                label_id: '',
+                cate_id: '',
+                _: ts
+            }
+            const result = { platform: RadioCN.CODE, data: [], orders: [] }
+            const defaultCategory = new Category("默认")
+            defaultCategory.add('国家电台', RadioCN.CNR_CODE)
+            result.data.push(defaultCategory)
 
-            const p1 = RadioCN.anchorRadioCategories()
-            const p2 = RadioCN.fmRadioCategories()
-            Promise.all([ p1, p2 ]).then(values => {
-                const anchorRadioCategories = values[0]
-                const fmRadioCategories = values[1]
+            getJson(url, reqBody).then(jsonp => {
+                const json = parseJson(jsonp, callback)
+                const category = new Category("分类")
+                result.data.push(category)
 
-                const defaultCategory = new Category("默认")
-                defaultCategory.add('国家电台', RadioCN.CNR_CODE)
-                result.data.push(defaultCategory)
-                result.data.push(...anchorRadioCategories.data)
-                result.data.push(...fmRadioCategories.data)
-                resolve(result)
-            }).catch(error => resolve(result))
+                const list = json.data.category
+                list.forEach(item => {
+                    category.add(item.name, item.id)
+                })
+
+                RadioCN.radioCategories().then(radioCateResult => {
+                    result.data.push(...radioCateResult.data)
+                    resolve(result)
+                })
+                
+            })
         })
     }
 
     //电台分类
-    static fmRadioCategories() {
+    static radioCategories() {
         return new Promise((resolve, reject) => {
             const url = "http://tacc.radio.cn/pcpages/radiopages"
             const ts = Date.now()
@@ -67,9 +84,9 @@ export class RadioCN {
         })
     }
 
-    //广播电台
-    static fmRadioSquare(cate, offset, limit, page, order) {
-        const result = { platform: RadioCN.CODE, cate, offset, limit, page, total: 1, data: [] }
+    //电台列表
+    static radioChannelList(cate, offset, limit, page, order) {
+        const result = { platform: RadioCN.CODE, cate, offset, limit, page, total: 0, data: [] }
         cate = cate.replace(RadioCN.RADIO_PREFIX, '')
         return new Promise((resolve, reject) => {
             if(page > 1) {
@@ -88,6 +105,7 @@ export class RadioCN {
             }
             getJson(url, reqBody).then(jsonp => {
                 const json = parseJson(jsonp, callback)
+                
                 const list = json.data.top
                 list.forEach(item => {
                     const { id, name, radio_id, radio_name, icon, streams, description} = item
@@ -110,13 +128,13 @@ export class RadioCN {
         })
     }
 
-    //全部
+    //歌单广场
     static square(cate, offset, limit, page, order) {
-        const originCate = cate 
-        let resolvedCate = (cate || "").toString().trim()
+        const originCate = cate
+        let resolvedCate = cate.trim()
         resolvedCate = resolvedCate.length < 1 ? RadioCN.CNR_CODE : resolvedCate
         //电台
-        if(resolvedCate.startsWith(RadioCN.RADIO_PREFIX)) return RadioCN.fmRadioSquare(resolvedCate, offset, limit, page, order)
+        if(resolvedCate.startsWith(RadioCN.RADIO_PREFIX)) return RadioCN.radioChannelList(cate, offset, limit, page, order)
         //分类歌单
         return new Promise((resolve, reject) => {
             const result = { platform: RadioCN.CODE, cate: originCate, offset, limit, page, total: 0, data: [] }
@@ -128,13 +146,13 @@ export class RadioCN {
                 per_page: 16,
                 page: page,
                 label_id: '',
-                cate_id: resolvedCate,
+                cate_id: cate,
                 _: ts
             }
             
             getJson(url, reqBody).then(jsonp => {
                 const json = parseJson(jsonp, callback)
-                result.total = json.data.total_page
+                
                 const list = json.data.odchannel
                 list.forEach(item => {
                     const { id, imageUrl, name, description } = item
@@ -163,7 +181,6 @@ export class RadioCN {
             }
             getJson(url, reqBody).then(jsonp => {
                 const json = parseJson(jsonp, callback)
-
                 const playlist = json.data.odchannel
                 const { name, imageUrl, description } = playlist
                 const cover = imageUrl[0].url
@@ -177,13 +194,11 @@ export class RadioCN {
                     const album = { id, name }
                     const duration = parseInt(item.duration) * 1000
                     const cover = result.cover
-                    const tid = item.id || item.programId
-                    const track = new Track(tid,RadioCN.CODE, item.name, artist, album, duration, cover)
-                    track.url = item.downloadUrl || item.streams[0].url
-                    track.lyric.addLine('999:99.000', item.description || description)
+                    const track = new Track(item.id, RadioCN.CODE, item.name, artist, album, duration, cover)
+                    track.url = item.streams[0].url
+                    track.lyric.addLine('00:00.000', item.description)
                     track.type = result.type
                     track.extra2 = item.onlinetime
-                    track.pid = id
                     result.addTrack(track)
                 })
                 resolve(result)
@@ -206,49 +221,13 @@ export class RadioCN {
         })
     }
 
-    //全部电台分类
-    static radioCategories() {
-        return RadioCN.categories()
-    }
-
-    //全部电台
-    static radioSquare(cate, offset, limit, page, order) {
-        return RadioCN.square(cate, offset, limit, page, order)
-    }
-
-    //主播电台
+    //电台分类
     static anchorRadioCategories() {
-        return new Promise((resolve, reject) => {
-            const url = "http://tacc.radio.cn/pcpages/categorypages"
-            const ts = Date.now()
-            const callback = 'jQuery1910629327131166708_' + ts
-            const reqBody = {
-                callback,
-                per_page: 16,
-                page: 1,
-                label_id: '',
-                cate_id: '',
-                _: ts
-            }
-            const result = { platform: RadioCN.CODE, data: [], orders: [] }
-
-            getJson(url, reqBody).then(jsonp => {
-                const json = parseJson(jsonp, callback)
-                const category = new Category("分类")
-                result.data.push(category)
-
-                const list = json.data.category
-                list.forEach(item => {
-                    category.add(item.name, item.id)
-                })
-                resolve(result)
-            })
-        })
+        return RadioCN.categories()
     }    
 
-    //主播电台
     static anchorRadioSquare(cate, offset, limit, page, order) {
         return RadioCN.square(cate, offset, limit, page, order)
     }
-    
+
 }

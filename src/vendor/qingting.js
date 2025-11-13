@@ -21,14 +21,6 @@ export class Qingting {
     static RADIO_PREFIX = 'FM_'
 
     //全部分类
-    static radioCategories() {
-        return Qingting.anchorRadioCategories()
-    }
-
-    static radioSquare(cate, offset, limit, page, order) {
-        return Qingting.anchorRadioSquare(cate, offset, limit, page, order)
-    }
-
     static anchorRadioCategories() {
         return new Promise((resolve, reject) => {
             const url = "https://i.qingting.fm/capi/neo-channel-filter?category=545&attrs=0&curpage=1"
@@ -52,9 +44,7 @@ export class Qingting {
             const url = "https://i.qingting.fm/capi/neo-channel-filter"
                 + "?category=" + cate + "&attrs=0&curpage=" + page
             getJson(url).then(json => {
-                const list = json.data.channels 
-                //TODO 目前每页数据 12条，后期可能会变动
-                result.total = Math.ceil(json.total / 12)
+                const list = json.data.channels
                 list.forEach(item => {
                     const { id, title, cover, description } = item
                     const playlist = new Playlist(Playlist.ANCHOR_RADIO_ID_PREFIX + id, Qingting.CODE, cover, title, null, description)
@@ -94,7 +84,7 @@ export class Qingting {
                     const track = new Track(id, Qingting.CODE, title, artist, album, duration * 1000, cover)
                     track.pid = result.id
                     track.type = result.type
-                    track.lyric.addLine('999:99.000', detail)
+                    track.lyric.addLine('00:00.000', detail)
                     //track.extra1 = playcount
                     track.extra2 = update_time
                     result.addTrack(track)

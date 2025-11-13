@@ -1,8 +1,9 @@
 <script setup>
+import { storeToRefs } from "pinia";
 import { inject, onActivated, onMounted, shallowRef, watch } from "vue";
 import MainTop from "./DefaultMainTop.vue";
+import MainContent from "./DefaultMainContent.vue";
 import { useSettingStore } from "../store/settingStore";
-import { storeToRefs } from "pinia";
 
 const { lyricMetaPos, isDefaultLayout, isDefaultClassicLayout, isSimpleLayout } = storeToRefs(useSettingStore());
 const { setupWindowZoomWithoutResize } = useSettingStore();
@@ -29,6 +30,7 @@ onMounted(() => {
 <template>
   <div id="main-center">
     <component id="main-top" :is="currentMainTop"> </component>
+    <MainContent id="main-content" :class="{ autopadding: isDefaultClassicLayout }"> </MainContent>
   </div>
 </template>
 

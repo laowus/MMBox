@@ -15,6 +15,11 @@ const { nextExploreMode } = useAppCommonStore();
 const { platforms, currentPlatformIndex, currentPlatformCode } = storeToRefs(usePlatformStore());
 const { updateCurrentPlatform, isLocalMusic } = usePlatformStore();
 
+const activeCustomPlaylistIndex = ref(-1);
+const activeFavoritePlaylistIndex = ref(-1);
+const activeArtistIndex = ref(-1);
+const isFavoritePlaylistsCollapsed = ref(false);
+
 let isUserMouseWheel = ref(false),
   userMouseWheelCancelTimer = null;
 
@@ -56,6 +61,10 @@ const isSubtitleVisible = () => {
   }
   return false;
 };
+
+EventBus.on("navigation-refreshCustomPlaylistIndex", (index) => {
+  activeCustomPlaylistIndex.value = index;
+});
 </script>
 
 <template>

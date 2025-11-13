@@ -1,11 +1,17 @@
 import { createRouter, createWebHashHistory } from "vue-router";
+import PlaylistSquareView from "../views/PlaylistSquareView.vue";
 import DefaultView from "../views/DefaultView.vue";
 
 const routes = [
   {
     //默认
     path: "/",
-    component: DefaultView
+    redirect: "/playlists/square/qq"
+  },
+  {
+    //歌单广场
+    path: "/playlists/square/:platform",
+    component: PlaylistSquareView
   }
 ];
 

@@ -198,24 +198,6 @@ const searchParam = (keyword, type, offset, limit, page) => {
     }
 }
 
-const searchParamNew = (keyword, type, offset, limit, page) => {
-    keyword = keyword ? keyword.trim() : ''
-    return {
-        comm: {
-            ct: '6',
-            cv: '80500'
-        },
-        req_1: moduleReq('music.search.SearchCgiService', 'DoSearchForQQMusicDesktop', 
-        {
-            num_per_page: 30,
-			page_num: page,
-			query: keyword,
-            search_type: type,
-            grp: 1
-        })
-    }
-}
-
 const topListReqBody = () => {
     return {
         _: Date.now(),
@@ -256,7 +238,7 @@ const topListDetailReqBody = (id, offset, limit, page) => {
     }
 }
 
-const playlistRadiosReqBody = () => {
+const radioListReqBody = () => {
     return {
         format: 'json',
         inCharset: 'utf8',
@@ -367,7 +349,7 @@ export class QQ {
     static RADIO_CODE= 88888888
     static NEW_CODE= 22222222
     static TOPLIST_PREFIX = "TOP_"
-    static RADIO_CACHE = { channel: 0, data: [] }
+    static RADIO_CACHE = { channel: 0, data: [], index: 0 }
     
     //全部分类
     static categories() {
@@ -415,6 +397,8 @@ export class QQ {
             const url = "https://u.y.qq.com/cgi-bin/musicu.fcg"
             const reqBody = topListReqBody()
             getJson(url, reqBody).then(json => {
+                
+                
                 const groupList = json.req_1.data.group
                 groupList.forEach(group => {
                     group.toplist.forEach(item => {
@@ -438,6 +422,7 @@ export class QQ {
             const topid = parseInt(id.replace(QQ.TOPLIST_PREFIX, ''))
             const reqBody = topListDetailReqBody(topid, offset, limit, page)
             getJson(url, reqBody).then(json => {
+                
                 const playlist = json.req_1.data.data
 
                 result.id = playlist.topId
@@ -453,7 +438,6 @@ export class QQ {
                     const duration = song.interval * 1000
                     const cover = getAlbumCover(song.album.mid)
                     const track = new Track(song.mid, QQ.CODE, song.name, artist, album, duration, cover)
-                    track.pid = id
                     result.addTrack(track)
                 })
                 resolve(result)
@@ -461,8 +445,48 @@ export class QQ {
         })
     }
 
-    //歌单电台列表
-    static playlistRadios(cate, offset, limit, page) {
+    //电台列表网页版
+    static radioListH5(cate, offset, limit, page) {
+        return new Promise((resolve, reject) => {
+            const result = { offset, limit, page, total: 0, data:[] }
+            if(page > 1) {
+                resolve(result)
+                return
+            }
+            const url = "https://y.qq.com/n/ryqq/radio"
+            getDoc(url).then(doc => {
+                const scriptEls = doc.querySelectorAll("script")
+                const key = "window.__INITIAL_DATA__"
+
+                let scriptText = null
+                for(var scriptEl of scriptEls) {
+                    scriptText = scriptEl.textContent
+                    if(!scriptText) continue
+                    scriptText = scriptText.trim()
+                    if(scriptText.includes(key)) break
+                }
+                if(scriptText) {
+                    scriptText = scriptText.split(key)[1].trim().substring(1)
+                    scriptText = scriptText.replace(/:undefined,/g, ':"",')
+                    const json = JSON.parse(scriptText)
+                    
+                    json.radio_list.forEach(group => {
+                        group.list.forEach(item => {
+                            const pid = QQ.RADIO_PREFIX + item.id
+                            const title = group.title + '| ' + item.title
+                            const playlist = new Playlist(pid, QQ.CODE, item.pic_url, title)
+                            playlist.type = Playlist.RADIO
+                            result.data.push(playlist)
+                        })
+                    })
+                }
+                resolve(result)
+            })
+        })
+    }
+
+    //电台列表
+    static radioList(cate, offset, limit, page) {
         return new Promise((resolve, reject) => {
             const result = { platform: QQ.CODE, cate, offset, limit, page, total: 0, data:[] }
             if(page > 1) {
@@ -470,7 +494,7 @@ export class QQ {
                 return
             }
             const url = "https://u.y.qq.com/cgi-bin/musicu.fcg"
-            const reqBody = playlistRadiosReqBody()
+            const reqBody = radioListReqBody()
             getJson(url, reqBody).then(json => {
                 const radioList = json.req_1.data.radio_list
                 radioList.forEach(group => {
@@ -489,25 +513,25 @@ export class QQ {
     }
 
     //电台：下一首歌曲
-    static nextPlaylistRadioTrack(channel, track) {
+    static nextRadioTrack(channel, track) {
         return new Promise((resolve, reject) => {
             let result = null
-            const firstplay = !track ? 1 : 0
+            let index = QQ.RADIO_CACHE.index
+            const length = QQ.RADIO_CACHE.data.length
             //是否命中缓存
-            if(channel == QQ.RADIO_CACHE.channel) {
-                const index = (firstplay == 1) ? 0 :
-                    QQ.RADIO_CACHE.data.findIndex(item => item.id == track.id)
-                const length = QQ.RADIO_CACHE.data.length
-                if(length > 0  && index > -1 && index < (length - 1)) {
-                    result = QQ.RADIO_CACHE.data[index + 1]
-                    resolve(result)
-                    return 
-                }
+            if(channel == QQ.RADIO_CACHE.channel 
+                && index < (length - 1)) {
+                result = QQ.RADIO_CACHE.data[++index]
+                QQ.RADIO_CACHE.index = index
+                resolve(result)
+                return 
             }
             //不命中，重置缓存
             QQ.RADIO_CACHE.channel = channel
             QQ.RADIO_CACHE.data.length = 0
+            QQ.RADIO_CACHE.index = 0
             //拉取数据
+            const firstplay = track ? 0 : 1
             const url = "https://u.y.qq.com/cgi-bin/musicu.fcg"
             const reqBody = radioSonglistReqBody(channel, firstplay)
             getJson(url, reqBody).then(json => {
@@ -518,6 +542,7 @@ export class QQ {
                     const duration = item.interval * 1000
                     const cover = getAlbumCover(item.album.mid)
                     const cache = new Track(item.mid, QQ.CODE, item.title, artist, album, duration, cover)
+                    //cache.isRadioType = true
                     cache.type = Playlist.NORMAL_RADIO_TYPE
                     cache.channel = channel
                     QQ.RADIO_CACHE.data.push(cache)
@@ -529,7 +554,7 @@ export class QQ {
     }
 
     //歌单广场(列表)
-    static square(cate, offset, limit, page) {
+    static square (cate, offset, limit, page) {
         const originCate = cate || 0
         let resolvedCate = cate
         if(typeof(resolvedCate) == 'string') resolvedCate = parseInt(resolvedCate.trim())
@@ -537,7 +562,7 @@ export class QQ {
         //榜单
         if(resolvedCate == QQ.TOPLIST_CODE) return QQ.toplist(cate, offset, limit, page)
         //电台
-        if(resolvedCate == QQ.RADIO_CODE) return QQ.playlistRadios(cate, offset, limit, page)
+        if(resolvedCate == QQ.RADIO_CODE) return QQ.radioList(cate, offset, limit, page)
         //普通歌单
         let sortId = 5 //最热
         if(resolvedCate == QQ.NEW_CODE) {
@@ -557,14 +582,13 @@ export class QQ {
                 ein: (offset + limit - 1)
             }
             getJson(url, reqBody).then(json => {
-                result.total = Math.ceil(json.data.sum / limit)
                 const list = json.data.list
                 list.forEach(item => {
                     const cover = item.imgurl
-                    const playlist = new Playlist(item.dissid, QQ.CODE, cover, item.dissname) 
-                    playlist.about = item.introduction
-                    playlist.listenNum = item.listennum
-                    result.data.push(playlist)
+
+                    const detail = new Playlist(item.dissid, QQ.CODE, cover, item.dissname) 
+                    detail.about = item.introduction
+                    result.data.push(detail)
                 })
                 resolve(result)
             })
@@ -603,9 +627,6 @@ export class QQ {
                     const cover = getAlbumCover(song.albummid)
                     const track = new Track(song.songmid, QQ.CODE, song.songname, artist, album, duration, cover)
                     track.mv = song.vid
-                    track.pid = id
-                    track.payPlay = (song.pay.payplay == 1)
-                    track.payDownload = (song.pay.paydownload == 1)
                     result.addTrack(track)
                 })
                 resolve(result)
@@ -659,6 +680,7 @@ export class QQ {
             const url = "http://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg"
             const reqBody = lyricReqBody(id) 
             getJson(url, reqBody).then(json => {
+                
                 let lyric = json.lyric
                 if(lyric) {
                     lyric = CryptoJS.enc.Base64.parse(lyric).toString(CryptoJS.enc.Utf8)
@@ -739,8 +761,6 @@ export class QQ {
                     const track = new Track(item.mid, QQ.CODE, item.title, 
                         artist, album, duration, cover)
                     track.mv = item.mv.vid
-                    track.payPlay = (item.pay.pay_play == 1)
-                    track.payDownload = (item.pay.pay_down == 1)
                     result.data.push(track)
                 })
                 resolve(result)
@@ -754,6 +774,7 @@ export class QQ {
             const url = "http://u.y.qq.com/cgi-bin/musicu.fcg"
             const reqBody = artistAlbumReqBody(id, offset, limit)
             getJson(url, reqBody).then(json => {
+                
                 const result = { id, offset, limit, page, data: [] }
                 const albumList = json.req_1.data.list
                 albumList.forEach(item => {
@@ -819,8 +840,6 @@ export class QQ {
                     const duration = song.interval * 1000
                     const track = new Track(song.mid, QQ.CODE, song.name, artist, album, duration, cover)
                     track.mv = song.mv.vid
-                    track.payPlay = (song.pay.pay_play == 1)
-                    track.payDownload = (song.pay.pay_down == 1)
                     result.addTrack(track)
                 })
                 resolve(result)
@@ -831,22 +850,21 @@ export class QQ {
     //搜索: 歌曲
     static searchSongs(keyword, offset, limit, page) {
         return new Promise((resolve, reject) => {
-            const url = "https://u.y.qq.com/cgi-bin/musicu.fcg"
-            const reqBody = JSON.stringify(searchParamNew(keyword, 0, offset, limit, page))
-            postJson(url, reqBody).then(json => {
-                const list = json.req_1.data.body.song.list
+            keyword = keyword.trim()
+            const url = "http://c.y.qq.com/soso/fcgi-bin/client_search_cp"
+            const reqBody = searchParam(keyword, 0, offset, limit, page)
+            getJson(url, reqBody).then(json => {
+                const list = json.data.song.list
                 const data = list.map(item => {
                     const artist = item.singer.map(ar => ({ id: ar.mid, name: ar.name }))
-                    const album = { id: item.album.mid, name : item.album.name }
+                    const album = { id: item.albummid, name : item.albumname }
                     const duration = item.interval * 1000
-                    const cover = getAlbumCover(item.album.mid)
-                    const track = new Track(item.mid, QQ.CODE, item.name, artist, album, duration, cover)
-                    track.mv = item.mv.vid
-                    track.payPlay = (item.pay.pay_play == 1)
-                    track.payDownload = (item.pay.pay_down == 1)
+                    const cover = getAlbumCover(item.albummid)
+                    const track = new Track(item.songmid, QQ.CODE, item.songname, artist, album, duration, cover)
+                    //track.mv = item.vid
                     return track
                 })
-                const result = { platform: QQ.CODE, offset, limit, page, data }
+                const result = { offset, limit, page, data }
                 resolve(result)
             })
         }) 
@@ -855,16 +873,23 @@ export class QQ {
     //搜索: 歌单
     static searchPlaylists(keyword, offset, limit, page) {
         return new Promise((resolve, reject) => {
-            const url = "https://u.y.qq.com/cgi-bin/musicu.fcg"
-            const reqBody = JSON.stringify(searchParamNew(keyword, 3, offset, limit, page))
-            postJson(url, reqBody).then(json => {
-                const list = json.req_1.data.body.songlist.list
+            const url = "https://c.y.qq.com/soso/fcgi-bin/client_music_search_songlist"
+            const reqBody = {
+                format: 'json',
+                // inCharset: 'utf8',
+                // outCharset: 'utf8',
+                remoteplace: 'txt.yqq.playlist',
+                page_no: page,
+                num_per_page: limit,
+                query: keyword
+            }
+            getJson(url, reqBody).then(json => {
+                const list = json.data.list
                 const data = list.map(item => {
-                    const playlist = new Playlist(item.dissid, QQ.CODE, item.imgurl, item.dissname)
-                    //playlist.about = item.introduction
+                    const playlist = new Playlist(item.dissid, QQ.CODE, item.imgurl, escapeHtml(item.dissname))
                     return playlist
                 })
-                const result = { platform: QQ.CODE, offset, limit, page, data }
+                const result = { offset, limit, page, data }
                 resolve(result)
             })
         }) 
@@ -873,16 +898,16 @@ export class QQ {
     //搜索: 专辑
     static searchAlbums(keyword, offset, limit, page) {
         return new Promise((resolve, reject) => {
-            const url = "https://u.y.qq.com/cgi-bin/musicu.fcg"
-            const reqBody = JSON.stringify(searchParamNew(keyword, 2, offset, limit, page))
-            postJson(url, reqBody).then(json => {
-                const list = json.req_1.data.body.album.list
+            const url = "http://c.y.qq.com/soso/fcgi-bin/client_search_cp"
+            const reqBody = searchParam(keyword, 8, offset, limit, page)
+            getJson(url, reqBody).then(json => {
+                const list = json.data.album.list
                 const data = list.map(item => {
                     const album = new Album(item.albumMID, QQ.CODE, item.albumName, item.albumPic)
                     album.publishTime = item.publicTime
                     return album
                 })
-                const result = { platform: QQ.CODE, offset, limit, page, data }
+                const result = { offset, limit, page, data }
                 resolve(result)
             })
         }) 
@@ -891,11 +916,12 @@ export class QQ {
     //搜索: 歌手
     static searchArtists(keyword, offset, limit, page) {
         return new Promise((resolve, reject) => {
-            const url = "https://u.y.qq.com/cgi-bin/musicu.fcg"
-            const reqBody = JSON.stringify(searchParamNew(keyword, 1, offset, limit, page))
-            postJson(url, reqBody).then(json => {
-                const list = json.req_1.data.body.singer.list
-                const result = { platform: QQ.CODE, offset, limit, page, data: [] }
+            const url = "http://c.y.qq.com/soso/fcgi-bin/client_search_cp"
+            const reqBody = searchParam(keyword, 9, offset, limit, page)
+            getJson(url, reqBody).then(json => {
+                
+                const list = json.data.singer.list
+                const result = { offset, limit, page, data: [] }
                 if(list) {
                     result.data = list.map(item => ({
                         id: item.singerMID,
